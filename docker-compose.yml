@@ -1,0 +1,21 @@
+services:
+  claude:
+    build:
+      context: .
+      args:
+        CLAUDE_CODE_VERSION: latest
+    container_name: claude-code
+    stdin_open: true
+    tty: true
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # Mount your project workspace
+      - ./workspace:/workspace
+      # Persist Claude Code config between runs
+      - claude-config:/home/node/.claude
+    working_dir: /workspace
+
+volumes:
+  claude-config:
