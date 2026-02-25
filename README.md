@@ -92,17 +92,14 @@ Once running, Claude Code has access to these PAL tools (enabled by default):
 | `challenge` | Critical analysis to prevent yes-man behavior |
 | `apilookup` | Current-year API/SDK documentation lookup |
 | `clink` | Bridge external AI CLIs and spawn subagents |
-
-Additional tools disabled by default (enable by removing from `DISABLED_TOOLS` in `.env`):
-
-| Tool | Description |
-|------|-------------|
 | `analyze` | Architecture understanding across codebases |
 | `refactor` | Intelligent code refactoring |
 | `testgen` | Test generation with edge cases |
 | `secaudit` | OWASP Top 10 security audits |
 | `docgen` | Documentation generation |
 | `tracer` | Static analysis for call-flow mapping |
+
+Additional tools that are normally disabled by default have been enabled.
 
 ## Configuration
 
