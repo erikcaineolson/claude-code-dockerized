@@ -23,37 +23,34 @@ if [ -n "$GEMINI_API_KEY" ] || [ -n "$OPENAI_API_KEY" ] || [ -n "$OPENROUTER_API
 
   # Only write MCP config if it doesn't already exist (don't overwrite user config)
   if [ ! -f "$MCP_CONFIG" ]; then
-    # Build env block dynamically based on which keys are set
-    ENV_BLOCK="{"
-    FIRST=true
+    # Build env block dynamically using jq for safe JSON construction
+    ENV_BLOCK="{}"
     for VAR in GEMINI_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY XAI_API_KEY DEFAULT_MODEL DISABLED_TOOLS; do
-      VAL=$(eval echo "\$$VAR")
+      VAL="${!VAR}"
       if [ -n "$VAL" ]; then
-        if [ "$FIRST" = true ]; then
-          FIRST=false
-        else
-          ENV_BLOCK+=","
-        fi
-        ENV_BLOCK+="\"$VAR\":\"$VAL\""
+        ENV_BLOCK=$(echo "$ENV_BLOCK" | jq --arg k "$VAR" --arg v "$VAL" '. + {($k): $v}')
       fi
     done
-    ENV_BLOCK+="}"
 
     # Find uvx binary
     UVX_PATH=$(command -v uvx 2>/dev/null || echo "$HOME/.local/bin/uvx")
 
-    cat > "$MCP_CONFIG" << MCPEOF
-{
-  "mcpServers": {
-    "pal": {
-      "type": "stdio",
-      "command": "bash",
-      "args": ["-c", "${UVX_PATH} --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server"],
-      "env": ${ENV_BLOCK}
-    }
-  }
-}
-MCPEOF
+    # Build the entire settings.json safely with jq (no string interpolation)
+    PAL_COMMIT="7afc7c1cc96e23992c8f105f960132c657883bb1"
+    jq -n \
+      --arg cmd "$UVX_PATH --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git@${PAL_COMMIT} pal-mcp-server" \
+      --argjson env "$ENV_BLOCK" \
+      '{
+        mcpServers: {
+          pal: {
+            type: "stdio",
+            command: "bash",
+            args: ["-c", $cmd],
+            env: $env
+          }
+        }
+      }' > "$MCP_CONFIG"
+
     echo "[entrypoint] PAL MCP server configured in ${MCP_CONFIG}"
   else
     echo "[entrypoint] Existing MCP config found at ${MCP_CONFIG}, skipping auto-configuration"

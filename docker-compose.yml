@@ -2,8 +2,6 @@ services:
   claude:
     build:
       context: .
-      args:
-        CLAUDE_CODE_VERSION: latest
     container_name: claude-code
     stdin_open: true
     tty: true
@@ -14,6 +12,8 @@ services:
       # Mount your project workspace
       - ./workspace:/workspace
       # Persist Claude Code config between runs
+      # WARNING: This volume stores settings.json which may contain API keys.
+      # Use `docker volume rm claude-code-dockerized_claude-config` to purge.
       - claude-config:/home/node/.claude
     working_dir: /workspace
 

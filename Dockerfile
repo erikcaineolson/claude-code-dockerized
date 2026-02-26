@@ -1,7 +1,9 @@
 FROM node:20-slim
 
-ARG CLAUDE_CODE_VERSION=latest
+ARG CLAUDE_CODE_VERSION=2.1.58
 ARG GIT_DELTA_VERSION=0.18.2
+ARG UV_VERSION=0.6.6
+ARG PAL_MCP_COMMIT=7afc7c1cc96e23992c8f105f960132c657883bb1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -10,7 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     less \
     procps \
-    sudo \
     fzf \
     jq \
     nano \
@@ -41,8 +42,8 @@ RUN ARCH=$(dpkg --print-architecture) && \
     dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
     rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
-# Install uv to a shared location
-RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+# Install uv (pinned version) to a shared location
+RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
 # Set up non-root user
 ARG USERNAME=node
@@ -63,11 +64,12 @@ ENV SHELL=/bin/bash
 ENV EDITOR=nano
 ENV DISABLE_AUTOUPDATER=1
 
-# Install Claude Code
+# Install Claude Code (pinned version)
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# Pre-fetch PAL MCP server so first run is faster
-RUN uvx --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server --help 2>/dev/null || true
+# Pre-fetch PAL MCP server (pinned commit) so first run is faster
+RUN uvx --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git@${PAL_MCP_COMMIT} pal-mcp-server --help 2>&1 \
+    || echo "[WARNING] PAL MCP pre-fetch failed, will download on first run"
 
 # Copy configuration and entrypoint
 COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh /usr/local/bin/entrypoint.sh
