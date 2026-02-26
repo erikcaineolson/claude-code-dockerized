@@ -82,21 +82,21 @@ Once running, Claude Code has access to these PAL tools (enabled by default):
 
 | Tool | Description |
 |------|-------------|
+| `analyze` | Architecture understanding across codebases |
+| `apilookup` | Current-year API/SDK documentation lookup |
+| `challenge` | Critical analysis to prevent yes-man behavior |
 | `chat` | Multi-turn brainstorming with other AI models |
-| `thinkdeep` | Extended reasoning and edge case analysis |
-| `planner` | Break complex projects into structured steps |
+| `clink` | Bridge external AI CLIs and spawn subagents |
+| `codereview` | Professional code reviews with severity levels |
 | `consensus` | Multi-model expert opinions |
 | `debug` | Systematic root cause investigation |
-| `codereview` | Professional code reviews with severity levels |
-| `precommit` | Validate changes before commits |
-| `challenge` | Critical analysis to prevent yes-man behavior |
-| `apilookup` | Current-year API/SDK documentation lookup |
-| `clink` | Bridge external AI CLIs and spawn subagents |
-| `analyze` | Architecture understanding across codebases |
-| `refactor` | Intelligent code refactoring |
-| `testgen` | Test generation with edge cases |
-| `secaudit` | OWASP Top 10 security audits |
 | `docgen` | Documentation generation |
+| `planner` | Break complex projects into structured steps |
+| `precommit` | Validate changes before commits |
+| `refactor` | Intelligent code refactoring |
+| `secaudit` | OWASP Top 10 security audits |
+| `testgen` | Test generation with edge cases |
+| `thinkdeep` | Extended reasoning and edge case analysis |
 | `tracer` | Static analysis for call-flow mapping |
 
 Additional tools that are normally disabled by default have been enabled.
