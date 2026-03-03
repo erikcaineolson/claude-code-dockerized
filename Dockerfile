@@ -4,7 +4,7 @@ ARG CLAUDE_CODE_VERSION=latest
 ARG GIT_DELTA_VERSION=0.18.2
 ARG PAL_MCP_COMMIT=7afc7c1cc96e23992c8f105f960132c657883bb1
 
-# Install system dependencies
+# Install system dependencies and GitHub CLI in a single layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -22,18 +22,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     ripgrep \
+    && mkdir -p -m 755 /etc/apt/keyrings \
+    && wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+      https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install GitHub CLI
-RUN mkdir -p -m 755 /etc/apt/keyrings && \
-    wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-      https://cli.github.com/packages/githubcli-archive-keyring.gpg && \
-    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-      > /etc/apt/sources.list.d/github-cli.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends gh && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install git-delta for better diffs
 RUN ARCH=$(dpkg --print-architecture) && \
