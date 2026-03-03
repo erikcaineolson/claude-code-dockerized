@@ -1,8 +1,7 @@
 FROM node:20-slim
 
-ARG CLAUDE_CODE_VERSION=2.1.58
+ARG CLAUDE_CODE_VERSION=latest
 ARG GIT_DELTA_VERSION=0.18.2
-ARG UV_VERSION=0.6.6
 ARG PAL_MCP_COMMIT=7afc7c1cc96e23992c8f105f960132c657883bb1
 
 # Install system dependencies
@@ -42,8 +41,8 @@ RUN ARCH=$(dpkg --print-architecture) && \
     dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
     rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
-# Install uv (pinned version) to a shared location
-RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+# Install uv to a shared location
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
 # Set up non-root user
 ARG USERNAME=node
@@ -63,8 +62,9 @@ ENV PATH="/home/${USERNAME}/.local/bin:/usr/local/share/npm-global/bin:${PATH}"
 ENV SHELL=/bin/bash
 ENV EDITOR=nano
 ENV DISABLE_AUTOUPDATER=1
+ENV PAL_MCP_COMMIT=${PAL_MCP_COMMIT}
 
-# Install Claude Code (pinned version)
+# Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Pre-fetch PAL MCP server (pinned commit) so first run is faster

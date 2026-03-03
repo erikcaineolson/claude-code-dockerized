@@ -36,9 +36,8 @@ if [ -n "$GEMINI_API_KEY" ] || [ -n "$OPENAI_API_KEY" ] || [ -n "$OPENROUTER_API
     UVX_PATH=$(command -v uvx 2>/dev/null || echo "$HOME/.local/bin/uvx")
 
     # Build the entire settings.json safely with jq (no string interpolation)
-    PAL_COMMIT="7afc7c1cc96e23992c8f105f960132c657883bb1"
     jq -n \
-      --arg cmd "$UVX_PATH --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git@${PAL_COMMIT} pal-mcp-server" \
+      --arg cmd "$UVX_PATH --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git@${PAL_MCP_COMMIT} pal-mcp-server" \
       --argjson env "$ENV_BLOCK" \
       '{
         mcpServers: {

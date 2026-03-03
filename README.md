@@ -21,7 +21,7 @@ You need `ANTHROPIC_API_KEY` plus **at least one** PAL provider key (Gemini has 
 
 ```bash
 # 1. Clone and enter the directory
-cd dockerized
+cd claude-code-dockerized
 
 # 2. Create your .env file from the template
 cp .env.example .env
@@ -99,7 +99,7 @@ Once running, Claude Code has access to these PAL tools (enabled by default):
 | `thinkdeep` | Extended reasoning and edge case analysis |
 | `tracer` | Static analysis for call-flow mapping |
 
-Additional tools that are normally disabled by default have been enabled.
+All PAL tools are enabled by default. Use the `DISABLED_TOOLS` environment variable to disable specific tools.
 
 ## Configuration
 
@@ -110,7 +110,7 @@ See `.env.example` for all available options. Key settings:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DEFAULT_MODEL` | `auto` | PAL model selection (`auto`, `pro`, `flash`, `o3`, etc.) |
-| `DISABLED_TOOLS` | `analyze,refactor,...` | Comma-separated PAL tools to disable |
+| `DISABLED_TOOLS` | _(none)_ | Comma-separated PAL tools to disable |
 | `GIT_USER_NAME` | — | Git commit author name |
 | `GIT_USER_EMAIL` | — | Git commit author email |
 
@@ -127,7 +127,7 @@ volumes:
 
 | Arg | Default | Description |
 |-----|---------|-------------|
-| `CLAUDE_CODE_VERSION` | `latest` | Pin a specific Claude Code version |
+| `CLAUDE_CODE_VERSION` | `latest` | Claude Code version (or pin a specific version) |
 | `GIT_DELTA_VERSION` | `0.18.2` | Pin git-delta version |
 
 ## What's Included
