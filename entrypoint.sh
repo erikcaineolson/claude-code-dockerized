@@ -58,4 +58,40 @@ else
   echo "[entrypoint] No AI provider keys found (GEMINI_API_KEY, OPENAI_API_KEY, etc.) — PAL MCP server not configured"
 fi
 
+# -----------------------------------------------------------------------------
+# Outbound SSH client key
+#
+# On first boot we generate a fresh, dedicated keypair *inside* the container so
+# it can SSH out to your own servers — without ever mounting your personal key.
+# Add the printed public key to the remote server's ~/.ssh/authorized_keys, then
+# `ssh user@host` from inside the container just works.
+# -----------------------------------------------------------------------------
+SSH_DIR="${CLAUDE_DIR}/ssh"
+CLIENT_KEY="${SSH_DIR}/id_ed25519"
+KNOWN_HOSTS="${SSH_DIR}/known_hosts"
+
+mkdir -p "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+
+# Fresh, container-generated key — persisted via the claude-config volume so the
+# public key you authorize on remote servers stays stable across restarts.
+if [ ! -f "$CLIENT_KEY" ]; then
+  ssh-keygen -t ed25519 -f "$CLIENT_KEY" -N "" -C "claude-code-container" -q
+  echo "[entrypoint] Generated a fresh outbound SSH key for this container."
+  echo "[entrypoint] Add this public key to your servers' ~/.ssh/authorized_keys:"
+  echo "    $(cat "${CLIENT_KEY}.pub")"
+fi
+
+# Point the ssh client at the persisted key and known_hosts by default.
+touch "$KNOWN_HOSTS"
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+cat > "$HOME/.ssh/config" <<EOF
+Host *
+    IdentityFile ${CLIENT_KEY}
+    UserKnownHostsFile ${KNOWN_HOSTS}
+    IdentitiesOnly yes
+EOF
+chmod 600 "$HOME/.ssh/config"
+
 exec "$@"

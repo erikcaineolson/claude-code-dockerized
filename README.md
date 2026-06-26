@@ -76,6 +76,42 @@ docker compose exec claude gh repo list
 docker compose exec claude gh pr create --title "My PR" --body "Description"
 ```
 
+### Outbound SSH (reach your own servers)
+
+So Claude can SSH out to servers in a walled garden, the container generates a
+**fresh, dedicated SSH keypair inside itself** on first boot — your personal SSH
+key is never mounted in. Nothing listens for inbound connections; the container
+only acts as an SSH *client*.
+
+On first boot the public key is printed to the container logs:
+
+```bash
+docker compose logs claude | grep -A1 "public key"
+```
+
+You can also read it any time:
+
+```bash
+docker compose exec claude cat ~/.claude/ssh/id_ed25519.pub
+```
+
+Add that public key to each target server's `~/.ssh/authorized_keys`. Then SSH
+out from inside the container — the key, `known_hosts`, and config are wired up
+automatically:
+
+```bash
+docker compose exec claude ssh user@your-server
+```
+
+The keypair, config, and `known_hosts` live in the persisted `claude-config`
+volume, so the public key you authorize stays stable across restarts. To rotate
+it, delete the key and restart:
+
+```bash
+docker compose exec claude rm ~/.claude/ssh/id_ed25519 ~/.claude/ssh/id_ed25519.pub
+docker compose restart claude
+```
+
 ## PAL MCP Tools
 
 Once running, Claude Code has access to these PAL tools (enabled by default):
@@ -139,6 +175,7 @@ volumes:
 - **uv** — fast Python package manager (for PAL)
 - **ripgrep** — fast code search
 - **git-delta** — improved diff output
+- **OpenSSH client** — outbound SSH to your own servers (auto-keyed)
 - **git, curl, wget, jq, nano, vim-tiny** — standard dev tools
 
 ## Troubleshooting

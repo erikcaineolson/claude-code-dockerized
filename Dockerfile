@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     ripgrep \
+    openssh-client \
     && mkdir -p -m 755 /etc/apt/keyrings \
     && wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg \
       https://cli.github.com/packages/githubcli-archive-keyring.gpg \
