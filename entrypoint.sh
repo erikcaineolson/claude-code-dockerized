@@ -82,6 +82,10 @@ if [ ! -f "$CLIENT_KEY" ]; then
   echo "    $(cat "${CLIENT_KEY}.pub")"
 fi
 
+# Lock the keypair read-only (0400). These should never be edited; if you ever
+# truly need to (e.g. manual rotation), chmod up first, then change them.
+chmod 400 "$CLIENT_KEY" "${CLIENT_KEY}.pub"
+
 # Point the ssh client at the persisted key and known_hosts by default.
 touch "$KNOWN_HOSTS"
 mkdir -p "$HOME/.ssh"

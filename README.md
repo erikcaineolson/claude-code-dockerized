@@ -108,9 +108,18 @@ volume, so the public key you authorize stays stable across restarts. To rotate
 it, delete the key and restart:
 
 ```bash
-docker compose exec claude rm ~/.claude/ssh/id_ed25519 ~/.claude/ssh/id_ed25519.pub
+docker compose exec claude rm -f ~/.claude/ssh/id_ed25519 ~/.claude/ssh/id_ed25519.pub
 docker compose restart claude
 ```
+
+#### Key permissions
+
+On every boot the entrypoint locks the keypair to `0400` (read-only, owner only).
+The keys are generated once and should never be edited in place, so removing the
+write bit guards against accidental or unwanted changes — and `ssh` refuses to
+use a private key that's group/world-readable anyway. If you ever genuinely need
+to modify them (e.g. manual rotation), `chmod 600` first, make the change, and
+the next boot will re-lock them to `0400`.
 
 ## PAL MCP Tools
 
