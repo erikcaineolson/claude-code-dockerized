@@ -7,17 +7,77 @@ services:
     tty: true
     security_opt:
       - no-new-privileges:true
+    # Supplementary group so the non-root `node` user can read the bind-mounted
+    # Docker socket below. On Docker Desktop (macOS) the socket is root:root, so
+    # 0 works; on native Linux set DOCKER_GID to the host docker group id
+    # (`getent group docker | cut -d: -f3`).
+    group_add:
+      - "${DOCKER_GID:-0}"
     env_file:
       - path: .env
         required: false
     volumes:
       # Mount your project workspace
       - ./workspace:/workspace
+      - ./../../Projects:/projects
+      # Share the host Docker daemon (sibling containers, not docker-in-docker).
+      # Enables testcontainers integration tests and image builds. NOTE: this
+      # grants the container control of the host Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
       # Persist Claude Code config between runs
       # WARNING: This volume stores settings.json which may contain API keys.
       # Use `docker volume rm claude-code-dockerized_claude-config` to purge.
       - claude-config:/home/node/.claude
-    working_dir: /workspace
+    working_dir: /projects
+
+  # ---------------------------------------------------------------------------
+  # OffSiteQuotes dev services (see /projects/necessary-support-osq.md).
+  # Sibling containers on this compose project's default network — the app run
+  # inside the claude container reaches them by service name:
+  #   DB_HOST=dev-mariadb  DB_PORT=3306  REDIS_HOST=dev-redis  REDIS_PORT=6379
+  # Ports are intentionally not published to the host.
+  # ---------------------------------------------------------------------------
+  dev-mariadb:
+    image: mariadb:10.11
+    container_name: dev-mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-offsitequotes}
+      MARIADB_USER: ${MARIADB_USER:-offsitequotes}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-secret}
+    volumes:
+      - osq-mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # One-shot sidecar: creates the empty `testing` database the OSQ test suite
+  # expects (phpunit.xml sets DB_DATABASE=testing) and grants the app user on
+  # it. Idempotent — runs once mariadb is healthy, then exits.
+  dev-mariadb-init:
+    image: mariadb:10.11
+    depends_on:
+      dev-mariadb:
+        condition: service_healthy
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+      MARIADB_USER: ${MARIADB_USER:-offsitequotes}
+    entrypoint:
+      - sh
+      - -c
+      - >
+        mariadb -h dev-mariadb -uroot -p"$$MARIADB_ROOT_PASSWORD" -e
+        "CREATE DATABASE IF NOT EXISTS testing;
+        GRANT ALL PRIVILEGES ON testing.* TO '$$MARIADB_USER'@'%';
+        FLUSH PRIVILEGES;"
+    restart: "no"
+
+  dev-redis:
+    image: redis:alpine
+    container_name: dev-redis
 
 volumes:
   claude-config:
+  osq-mariadb-data:

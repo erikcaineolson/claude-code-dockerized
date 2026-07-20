@@ -121,6 +121,29 @@ use a private key that's group/world-readable anyway. If you ever genuinely need
 to modify them (e.g. manual rotation), `chmod 600` first, make the change, and
 the next boot will re-lock them to `0400`.
 
+### PHP / Laravel toolchain + dev services
+
+The image ships **PHP 8.4 CLI** (Sury repo, pinned via the `PHP_VERSION` build
+arg) with the extension set Laravel apps need — `pdo_mysql`, `gd`
+(freetype/jpeg/webp), `zip`, `intl`, `bcmath`, `exif`, `redis`, `mbstring`,
+`xml`, `curl`, `sqlite3` — plus **Composer 2**. `php artisan`, `pest`,
+`phpstan`, and `pint` all run natively inside the container.
+
+For apps that need a real database, the compose file defines sibling
+containers on the same network (not published to the host):
+
+| Service | Image | Reach it at |
+|---------|-------|-------------|
+| `dev-mariadb` | `mariadb:10.11` | `DB_HOST=dev-mariadb`, port `3306` |
+| `dev-redis` | `redis:alpine` | `REDIS_HOST=dev-redis`, port `6379` |
+
+`docker compose up -d` starts them alongside the claude container. A one-shot
+`dev-mariadb-init` sidecar creates the empty `testing` database (for test
+suites that set `DB_DATABASE=testing`) and grants the app user on it — it's
+idempotent and exits after running. Data persists in the `osq-mariadb-data`
+volume. Dev credentials default to `offsitequotes` / `secret` (root: `root`)
+and can be overridden in `.env`.
+
 ## PAL MCP Tools
 
 Once running, Claude Code has access to these PAL tools (enabled by default):
@@ -174,6 +197,7 @@ volumes:
 |-----|---------|-------------|
 | `CLAUDE_CODE_VERSION` | `latest` | Claude Code version (or pin a specific version) |
 | `GIT_DELTA_VERSION` | `0.18.2` | Pin git-delta version |
+| `PHP_VERSION` | `8.4` | PHP CLI version installed from the Sury repo |
 
 ## What's Included
 
@@ -185,6 +209,8 @@ volumes:
 - **ripgrep** — fast code search
 - **git-delta** — improved diff output
 - **OpenSSH client** — outbound SSH to your own servers (auto-keyed)
+- **PHP 8.4 CLI + Composer 2** — Laravel development (extensions listed above)
+- **dev-mariadb / dev-redis** — sibling database + cache containers for local app runs and test suites
 - **git, curl, wget, jq, nano, vim-tiny** — standard dev tools
 
 ## Troubleshooting
