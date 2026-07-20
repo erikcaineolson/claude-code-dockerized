@@ -14,15 +14,26 @@ if [ -n "$GH_TOKEN" ]; then
   echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null || true
 fi
 
-# Set up Claude Code MCP config for PAL MCP server if any provider key is set
+# -----------------------------------------------------------------------------
+# MCP servers for Claude Code (Fable): Codex + PAL
+#
+# Codex is registered unconditionally — Fable drives it as a subordinate coding
+# agent and it authenticates via `codex login` (ChatGPT), not an API key. PAL is
+# added only when at least one provider key is present. We build the settings.json
+# only if one doesn't already exist, so we never clobber user config.
+# -----------------------------------------------------------------------------
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 MCP_CONFIG="${CLAUDE_DIR}/settings.json"
+mkdir -p "$CLAUDE_DIR"
 
-if [ -n "$GEMINI_API_KEY" ] || [ -n "$OPENAI_API_KEY" ] || [ -n "$OPENROUTER_API_KEY" ] || [ -n "$XAI_API_KEY" ]; then
-  mkdir -p "$CLAUDE_DIR"
+if [ ! -f "$MCP_CONFIG" ]; then
+  # Codex as an MCP server over stdio (`codex mcp-server`).
+  CODEX_PATH=$(command -v codex 2>/dev/null || echo codex)
+  MCP_SERVERS=$(jq -n --arg cmd "$CODEX_PATH" \
+    '{ codex: { type: "stdio", command: $cmd, args: ["mcp-server"] } }')
 
-  # Only write MCP config if it doesn't already exist (don't overwrite user config)
-  if [ ! -f "$MCP_CONFIG" ]; then
+  # PAL — single-model delegation. Only added when a provider key is present.
+  if [ -n "$GEMINI_API_KEY" ] || [ -n "$OPENAI_API_KEY" ] || [ -n "$OPENROUTER_API_KEY" ] || [ -n "$XAI_API_KEY" ]; then
     # Build env block dynamically using jq for safe JSON construction
     ENV_BLOCK="{}"
     for VAR in GEMINI_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY XAI_API_KEY DEFAULT_MODEL DISABLED_TOOLS; do
@@ -35,27 +46,40 @@ if [ -n "$GEMINI_API_KEY" ] || [ -n "$OPENAI_API_KEY" ] || [ -n "$OPENROUTER_API
     # Find uvx binary
     UVX_PATH=$(command -v uvx 2>/dev/null || echo "$HOME/.local/bin/uvx")
 
-    # Build the entire settings.json safely with jq (no string interpolation)
-    jq -n \
+    MCP_SERVERS=$(echo "$MCP_SERVERS" | jq \
       --arg cmd "$UVX_PATH --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git@${PAL_MCP_COMMIT} pal-mcp-server" \
       --argjson env "$ENV_BLOCK" \
-      '{
-        mcpServers: {
-          pal: {
-            type: "stdio",
-            command: "bash",
-            args: ["-c", $cmd],
-            env: $env
-          }
-        }
-      }' > "$MCP_CONFIG"
-
-    echo "[entrypoint] PAL MCP server configured in ${MCP_CONFIG}"
+      '. + { pal: { type: "stdio", command: "bash", args: ["-c", $cmd], env: $env } }')
+    echo "[entrypoint] PAL MCP server configured"
   else
-    echo "[entrypoint] Existing MCP config found at ${MCP_CONFIG}, skipping auto-configuration"
+    echo "[entrypoint] No AI provider keys found — PAL MCP server not configured (Codex still registered)"
   fi
+
+  jq -n --argjson servers "$MCP_SERVERS" '{ mcpServers: $servers }' > "$MCP_CONFIG"
+  echo "[entrypoint] MCP config written to ${MCP_CONFIG}"
 else
-  echo "[entrypoint] No AI provider keys found (GEMINI_API_KEY, OPENAI_API_KEY, etc.) — PAL MCP server not configured"
+  echo "[entrypoint] Existing MCP config found at ${MCP_CONFIG}, skipping auto-configuration"
+fi
+
+# -----------------------------------------------------------------------------
+# Codex non-interactive defaults
+#
+# So Fable can drive Codex without it stopping for approval. This container is
+# itself the isolation boundary (non-root, no-new-privileges, disposable) — the
+# same posture Claude Code runs under here — and Codex's own Landlock/seccomp
+# sandbox can't initialize under no-new-privileges anyway, so we let Codex run
+# with full in-container access and never block. Tighten sandbox_mode to
+# "workspace-write" if you drop no-new-privileges and want Codex confined.
+# Written only if absent, so your edits to config.toml survive restarts.
+# -----------------------------------------------------------------------------
+CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
+mkdir -p "$CODEX_DIR"
+if [ ! -f "${CODEX_DIR}/config.toml" ]; then
+  cat > "${CODEX_DIR}/config.toml" <<'EOF'
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+EOF
+  echo "[entrypoint] Wrote default Codex config to ${CODEX_DIR}/config.toml"
 fi
 
 # -----------------------------------------------------------------------------
