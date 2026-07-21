@@ -28,6 +28,11 @@ services:
       # WARNING: This volume stores settings.json which may contain API keys.
       # Use `docker volume rm claude-code-dockerized_claude-config` to purge.
       - claude-config:/home/node/.claude
+      # Codex ChatGPT login in its own volume (nested over claude-config at the
+      # CODEX_HOME path) so worker containers can share the login WITHOUT
+      # getting claude-config, which holds real credentials. Workers mount it
+      # at /home/node/.codex via bin/codex-worker.sh.
+      - codex-auth:/home/node/.claude/codex
     working_dir: /projects
 
   # ---------------------------------------------------------------------------
@@ -36,8 +41,12 @@ services:
   # inside the claude container reaches them by service name:
   #   DB_HOST=dev-mariadb  DB_PORT=3306  REDIS_HOST=dev-redis  REDIS_PORT=6379
   # Ports are intentionally not published to the host.
+  # Profile-gated so idle runs don't burn overhead — start on demand with:
+  #   docker compose --profile db up -d
+  # (the test suite depends on these; start the profile before running its suite.)
   # ---------------------------------------------------------------------------
   dev-mariadb:
+    profiles: ["db"]
     image: mariadb:10.11
     container_name: dev-mariadb
     environment:
@@ -57,6 +66,7 @@ services:
   # expects (phpunit.xml sets DB_DATABASE=testing) and grants the app user on
   # it. Idempotent — runs once mariadb is healthy, then exits.
   dev-mariadb-init:
+    profiles: ["db"]
     image: mariadb:10.11
     depends_on:
       dev-mariadb:
@@ -75,9 +85,15 @@ services:
     restart: "no"
 
   dev-redis:
+    profiles: ["db"]
     image: redis:alpine
     container_name: dev-redis
 
 volumes:
   claude-config:
   mariadb-data:
+  # Created once outside compose (`docker volume create codex-auth`) and shared
+  # with worker containers; external so `compose down -v` can't wipe the login.
+  codex-auth:
+    external: true
+    name: codex-auth

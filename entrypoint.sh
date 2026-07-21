@@ -15,22 +15,21 @@ if [ -n "$GH_TOKEN" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# MCP servers for Claude Code (Fable): Codex + PAL
+# MCP servers for Claude Code (Fable): PAL
 #
-# Codex is registered unconditionally — Fable drives it as a subordinate coding
-# agent and it authenticates via `codex login` (ChatGPT), not an API key. PAL is
-# added only when at least one provider key is present. We build the settings.json
-# only if one doesn't already exist, so we never clobber user config.
+# Codex is intentionally NOT registered as an MCP server: under the supervisor
+# model Fable launches Codex workers as disposable sibling containers via
+# bin/codex-worker.sh (see plan-codex-workers.md) — never in-process here,
+# where SSH/GH credentials live. PAL is added only when at least one provider
+# key is present. We build the settings.json only if one doesn't already
+# exist, so we never clobber user config.
 # -----------------------------------------------------------------------------
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 MCP_CONFIG="${CLAUDE_DIR}/settings.json"
 mkdir -p "$CLAUDE_DIR"
 
 if [ ! -f "$MCP_CONFIG" ]; then
-  # Codex as an MCP server over stdio (`codex mcp-server`).
-  CODEX_PATH=$(command -v codex 2>/dev/null || echo codex)
-  MCP_SERVERS=$(jq -n --arg cmd "$CODEX_PATH" \
-    '{ codex: { type: "stdio", command: $cmd, args: ["mcp-server"] } }')
+  MCP_SERVERS='{}'
 
   # PAL — single-model delegation. Only added when a provider key is present.
   if [ -n "$GEMINI_API_KEY" ] || [ -n "$OPENAI_API_KEY" ] || [ -n "$OPENROUTER_API_KEY" ] || [ -n "$XAI_API_KEY" ]; then
@@ -52,7 +51,7 @@ if [ ! -f "$MCP_CONFIG" ]; then
       '. + { pal: { type: "stdio", command: "bash", args: ["-c", $cmd], env: $env } }')
     echo "[entrypoint] PAL MCP server configured"
   else
-    echo "[entrypoint] No AI provider keys found — PAL MCP server not configured (Codex still registered)"
+    echo "[entrypoint] No AI provider keys found — PAL MCP server not configured"
   fi
 
   jq -n --argjson servers "$MCP_SERVERS" '{ mcpServers: $servers }' > "$MCP_CONFIG"
