@@ -60,8 +60,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 RUN GOBIN=/usr/local/bin go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
 # Install PHP CLI + extensions (Sury repo — Debian stock tops out at 8.2) and
-# Composer, for Laravel work (the Laravel app prod runs 8.4; see
-# project-notes.md). exif, ctype, fileinfo, tokenizer, pdo, openssl and
+# Composer, for Laravel work. exif, ctype, fileinfo, tokenizer, pdo, openssl and
 # filter ship inside php-cli/common — only the packaged extensions are listed.
 RUN curl -fsSL https://packages.sury.org/php/apt.gpg -o /etc/apt/keyrings/sury-php.gpg \
     && chmod go+r /etc/apt/keyrings/sury-php.gpg \

@@ -36,14 +36,14 @@ services:
     working_dir: /projects
 
   # ---------------------------------------------------------------------------
-  # the Laravel app dev services (see /projects/project-notes.md).
-  # Sibling containers on this compose project's default network — the app run
-  # inside the claude container reaches them by service name:
+  # Laravel dev services. Sibling containers on this compose project's default
+  # network — an app run inside the claude container reaches them by service
+  # name:
   #   DB_HOST=dev-mariadb  DB_PORT=3306  REDIS_HOST=dev-redis  REDIS_PORT=6379
   # Ports are intentionally not published to the host.
   # Profile-gated so idle runs don't burn overhead — start on demand with:
   #   docker compose --profile db up -d
-  # (the test suite depends on these; start the profile before running its suite.)
+  # (start the profile before running test suites that need these services.)
   # ---------------------------------------------------------------------------
   dev-mariadb:
     profiles: ["db"]
@@ -62,8 +62,8 @@ services:
       timeout: 5s
       retries: 12
 
-  # One-shot sidecar: creates the empty `testing` database the app test suite
-  # expects (phpunit.xml sets DB_DATABASE=testing) and grants the app user on
+  # One-shot sidecar: creates the empty `testing` database Laravel test suites
+  # expect (phpunit.xml sets DB_DATABASE=testing) and grants the app user on
   # it. Idempotent — runs once mariadb is healthy, then exits.
   dev-mariadb-init:
     profiles: ["db"]
