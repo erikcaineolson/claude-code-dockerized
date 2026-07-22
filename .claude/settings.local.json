@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker rm *)",
+      "Bash(docker run *)",
+      "Bash(docker exec *)",
+      "Bash(chmod 600 /tmp/ck)",
+      "Bash(ssh -i /tmp/ck -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null node@127.0.0.1 'echo CONNECTED_AS=$\\(whoami\\) on $\\(hostname\\)')",
+      "Bash(rm -f /tmp/ck)",
+      "Bash(docker compose *)",
+      "Bash(docker network *)",
+      "Bash(break)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh pr *)",
+      "Bash(docker build *)",
+      "Bash(npm view *)",
+      "Bash(echo \"registry latest: $\\(npm view @anthropic-ai/claude-code version\\)\")",
+      "Bash(claude --version)",
+      "Bash(claude -v)",
+      "Bash(echo \"running container: $\\(claude --version 2>/dev/null || claude -v 2>/dev/null\\)\")",
+      "Bash(npm install *)"
+    ]
+  }
+}
