@@ -21,7 +21,9 @@
       "Bash(claude --version)",
       "Bash(claude -v)",
       "Bash(echo \"running container: $\\(claude --version 2>/dev/null || claude -v 2>/dev/null\\)\")",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(codex exec:*)",
+      "Bash(mount)"
     ]
   }
 }
