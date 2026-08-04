@@ -109,13 +109,66 @@ fi
 # truly need to (e.g. manual rotation), chmod up first, then change them.
 chmod 400 "$CLIENT_KEY" "${CLIENT_KEY}.pub"
 
-# Point the ssh client at the persisted key and known_hosts by default.
-touch "$KNOWN_HOSTS"
+# -----------------------------------------------------------------------------
+# Host-provided SSH config and keys (optional)
+#
+# The repo's gitignored ./ssh directory (see ssh/README.md) is bind-mounted
+# read-only at /home/node/host-ssh. Its contents are copied into ~/.ssh here
+# rather than used in place: bind mounts preserve host permissions, and ssh
+# refuses group/world-readable keys. A file named `config` is Include'd ahead
+# of the defaults below so its per-host settings win; every other private key
+# is appended as an IdentityFile fallback so a bare key works without a config.
+# -----------------------------------------------------------------------------
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
+
+HOST_SSH_SRC="/home/node/host-ssh"
+HOST_SSH_INCLUDE=""
+EXTRA_IDENTITIES=""
+if [ -d "$HOST_SSH_SRC" ]; then
+  for f in "$HOST_SSH_SRC"/*; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f")"
+    case "$base" in
+      README*|*.md|.DS_Store)
+        ;;
+      config)
+        cp "$f" "$HOME/.ssh/host_config"
+        chmod 600 "$HOME/.ssh/host_config"
+        HOST_SSH_INCLUDE="Include ${HOME}/.ssh/host_config"
+        echo "[entrypoint] Imported host SSH config from ./ssh"
+        ;;
+      known_hosts)
+        # Merged into the persisted known_hosts below.
+        ;;
+      *.pub)
+        cp "$f" "$HOME/.ssh/$base"
+        chmod 644 "$HOME/.ssh/$base"
+        ;;
+      *)
+        cp "$f" "$HOME/.ssh/$base"
+        chmod 600 "$HOME/.ssh/$base"
+        EXTRA_IDENTITIES="${EXTRA_IDENTITIES}
+    IdentityFile ${HOME}/.ssh/${base}"
+        echo "[entrypoint] Imported host SSH key ${base} from ./ssh"
+        ;;
+    esac
+  done
+fi
+
+# Point the ssh client at the persisted key and known_hosts by default.
+touch "$KNOWN_HOSTS"
+if [ -f "${HOST_SSH_SRC}/known_hosts" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ -n "$line" ]; then
+      grep -qxF "$line" "$KNOWN_HOSTS" || echo "$line" >> "$KNOWN_HOSTS"
+    fi
+  done < "${HOST_SSH_SRC}/known_hosts"
+fi
 cat > "$HOME/.ssh/config" <<EOF
+${HOST_SSH_INCLUDE}
 Host *
-    IdentityFile ${CLIENT_KEY}
+    IdentityFile ${CLIENT_KEY}${EXTRA_IDENTITIES}
     UserKnownHostsFile ${KNOWN_HOSTS}
     IdentitiesOnly yes
 EOF

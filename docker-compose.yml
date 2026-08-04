@@ -20,6 +20,10 @@ services:
       # Mount your project workspace
       - ./workspace:/workspace
       - ./../../Projects:/projects
+      # Optional host SSH config/keys (gitignored ./ssh — see ssh/README.md).
+      # Read-only; entrypoint.sh copies the contents into ~/.ssh with correct
+      # permissions at boot.
+      - ./ssh:/home/node/host-ssh:ro
       # Share the host Docker daemon (sibling containers, not docker-in-docker).
       # Enables testcontainers integration tests and image builds. NOTE: this
       # grants the container control of the host Docker daemon.

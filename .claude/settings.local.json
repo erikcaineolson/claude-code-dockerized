@@ -23,7 +23,9 @@
       "Bash(echo \"running container: $\\(claude --version 2>/dev/null || claude -v 2>/dev/null\\)\")",
       "Bash(npm install *)",
       "Bash(codex exec:*)",
-      "Bash(mount)"
+      "Bash(mount)",
+      "Bash(bash -n entrypoint.sh)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

@@ -2,3 +2,5 @@
 workspace/
 *.log
 .DS_Store
+ssh/*
+!ssh/README.md
