@@ -87,7 +87,11 @@ RUN corepack enable
 
 # Set up non-root user
 ARG USERNAME=node
-RUN mkdir -p /workspace /home/${USERNAME}/.claude && \
+# The codex subdir must exist in the image owned by ${USERNAME}: the external
+# codex-auth volume mounts there, and Docker initializes an empty volume with
+# the image directory's ownership — without this it's created root-owned and
+# entrypoint.sh can't write config.toml.
+RUN mkdir -p /workspace /home/${USERNAME}/.claude/codex && \
     chown -R ${USERNAME}:${USERNAME} /workspace /home/${USERNAME}/.claude
 
 # Set up npm global directory for non-root installs

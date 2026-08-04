@@ -232,6 +232,30 @@ docker compose exec claude rm ~/.claude/settings.json
 docker compose restart claude
 ```
 
+### "external volume \"codex-auth\" not found"
+
+The `codex-auth` volume is declared `external` so `docker compose down -v` can't wipe the Codex login, which means Compose won't create it for you. Create it once before the first bring-up:
+
+```bash
+docker volume create codex-auth
+```
+
+### "config.toml: Permission denied" from entrypoint.sh
+
+The `codex-auth` volume was created root-owned, so the `node` user can't write Codex's config into it. This happens when the volume is first mounted by an image that predates the fix creating `/home/node/.claude/codex` in the image (Docker initializes an empty volume with the image directory's ownership — no directory in the image means the mountpoint defaults to root).
+
+Fix the existing volume's ownership (safe — preserves any Codex login already stored there):
+
+```bash
+docker run --rm -v codex-auth:/codex alpine chown -R 1000:1000 /codex
+```
+
+Then rebuild so fresh volumes get the right ownership automatically:
+
+```bash
+docker compose build && docker compose up -d
+```
+
 ### GitHub CLI not authenticated
 
 Make sure `GH_TOKEN` is set in your `.env` file. The token needs `repo` scope at minimum.
