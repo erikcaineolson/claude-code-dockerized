@@ -15,50 +15,55 @@ if [ -n "$GH_TOKEN" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# MCP servers for Claude Code (Fable): PAL
+# Agent CLI access for Claude Code (Codex, Gemini)
 #
-# Codex is intentionally NOT registered as an MCP server: under the supervisor
-# model Fable launches Codex workers as disposable sibling containers via
-# bin/codex-worker.sh (see plan-codex-workers.md) — never in-process here,
-# where SSH/GH credentials live. PAL is added only when at least one provider
-# key is present. We build the settings.json only if one doesn't already
-# exist, so we never clobber user config.
+# Neither CLI is registered as an MCP server: under the supervisor model Fable
+# drives them over Bash — Codex workers as disposable sibling containers via
+# codex-worker (see bin/codex-worker.sh), Gemini in-process for second-opinion
+# reviews (`gemini -p`, keyed by GEMINI_API_KEY from .env).
+#
+# Both are pre-authorized in the user-scope permission allowlist so a fresh
+# claude-config volume drives them out of the box instead of stopping at
+# permission prompts. `Bash(codex:*)` covers every subcommand (exec, login,
+# resume, mcp, apply) so no Codex invocation stops for approval.
+#
+# The container is the sandbox, so Claude Code's own confinement is switched
+# off to match the posture Codex already runs under here (approval_policy
+# "never" / sandbox_mode "danger-full-access", written further down):
+#   permissions.defaultMode  bypassPermissions — no tool prompts at all
+#   sandbox.enabled          false — Bash is never wrapped; bwrap/socat aren't
+#                            in the image and can't init under
+#                            no-new-privileges anyway
+#   skipDangerousModePermissionPrompt — don't re-ask to confirm bypass mode
+# Revert these three if you ever run this image without the container boundary.
+#
+# This merges on EVERY boot (jq set-union — user-added rules and all other
+# settings survive untouched), so it also upgrades volumes whose settings.json
+# predates this feature.
 # -----------------------------------------------------------------------------
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-MCP_CONFIG="${CLAUDE_DIR}/settings.json"
+SETTINGS_JSON="${CLAUDE_DIR}/settings.json"
 mkdir -p "$CLAUDE_DIR"
 
-if [ ! -f "$MCP_CONFIG" ]; then
-  MCP_SERVERS='{}'
-
-  # PAL — single-model delegation. Only added when a provider key is present.
-  if [ -n "$GEMINI_API_KEY" ] || [ -n "$OPENAI_API_KEY" ] || [ -n "$OPENROUTER_API_KEY" ] || [ -n "$XAI_API_KEY" ]; then
-    # Build env block dynamically using jq for safe JSON construction
-    ENV_BLOCK="{}"
-    for VAR in GEMINI_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY XAI_API_KEY DEFAULT_MODEL DISABLED_TOOLS; do
-      VAL="${!VAR}"
-      if [ -n "$VAL" ]; then
-        ENV_BLOCK=$(echo "$ENV_BLOCK" | jq --arg k "$VAR" --arg v "$VAL" '. + {($k): $v}')
-      fi
-    done
-
-    # Find uvx binary
-    UVX_PATH=$(command -v uvx 2>/dev/null || echo "$HOME/.local/bin/uvx")
-
-    MCP_SERVERS=$(echo "$MCP_SERVERS" | jq \
-      --arg cmd "$UVX_PATH --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git@${PAL_MCP_COMMIT} pal-mcp-server" \
-      --argjson env "$ENV_BLOCK" \
-      '. + { pal: { type: "stdio", command: "bash", args: ["-c", $cmd], env: $env } }')
-    echo "[entrypoint] PAL MCP server configured"
-  else
-    echo "[entrypoint] No AI provider keys found — PAL MCP server not configured"
-  fi
-
-  jq -n --argjson servers "$MCP_SERVERS" '{ mcpServers: $servers }' > "$MCP_CONFIG"
-  echo "[entrypoint] MCP config written to ${MCP_CONFIG}"
+AGENT_CLI_ALLOW='["Bash(codex:*)","Bash(codex exec:*)","Bash(codex --version)","Bash(codex login status)","Bash(codex-worker:*)","Bash(gemini -p:*)","Bash(gemini --version)"]'
+[ -f "$SETTINGS_JSON" ] || echo '{}' > "$SETTINGS_JSON"
+TMP_SETTINGS="$(mktemp)"
+if jq --argjson add "$AGENT_CLI_ALLOW" \
+     '.permissions.allow = ((.permissions.allow // []) + $add | unique)
+      | .permissions.defaultMode = "bypassPermissions"
+      | .sandbox = ((.sandbox // {}) + {enabled: false, autoAllowBashIfSandboxed: true})
+      | .skipDangerousModePermissionPrompt = true' \
+     "$SETTINGS_JSON" > "$TMP_SETTINGS" 2>/dev/null; then
+  mv "$TMP_SETTINGS" "$SETTINGS_JSON"
+  echo "[entrypoint] Codex/Gemini allowlist + unsandboxed bypass mode ensured in ${SETTINGS_JSON}"
 else
-  echo "[entrypoint] Existing MCP config found at ${MCP_CONFIG}, skipping auto-configuration"
+  rm -f "$TMP_SETTINGS"
+  echo "[entrypoint] WARNING: ${SETTINGS_JSON} is not valid JSON — skipped agent CLI permission merge"
 fi
+
+# Drop the PAL MCP registration earlier images wrote into ~/.claude.json —
+# PAL was removed (upstream is dormant and broken against the current MCP SDK).
+claude mcp remove pal --scope user >/dev/null 2>&1 || true
 
 # -----------------------------------------------------------------------------
 # Codex non-interactive defaults

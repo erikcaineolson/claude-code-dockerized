@@ -25,7 +25,8 @@
       "Bash(codex exec:*)",
       "Bash(mount)",
       "Bash(bash -n entrypoint.sh)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Read(//home/node/.ssh/**)"
     ]
   }
 }

@@ -2,8 +2,8 @@ FROM node:22-slim
 
 ARG CLAUDE_CODE_VERSION=latest
 ARG CODEX_VERSION=latest
+ARG GEMINI_CLI_VERSION=latest
 ARG GIT_DELTA_VERSION=0.18.2
-ARG PAL_MCP_COMMIT=7afc7c1cc96e23992c8f105f960132c657883bb1
 ARG PHP_VERSION=8.4
 
 # Install system dependencies and GitHub CLI in a single layer
@@ -107,7 +107,6 @@ ENV PATH="/home/${USERNAME}/.local/bin:/usr/local/share/npm-global/bin:${PATH}"
 ENV SHELL=/bin/bash
 ENV EDITOR=nano
 ENV DISABLE_AUTOUPDATER=1
-ENV PAL_MCP_COMMIT=${PAL_MCP_COMMIT}
 # Persist Codex auth/config on the claude-config volume (mounted at ~/.claude),
 # so `codex login` survives restarts and rebuilds just like the Claude Code login.
 ENV CODEX_HOME=/home/${USERNAME}/.claude/codex
@@ -130,13 +129,26 @@ ADD https://registry.npmjs.org/@openai/codex/latest /tmp/codex-latest.json
 # volume — see the ENV CODEX_HOME below — so you log in once, like Claude Code.
 RUN npm install -g @openai/codex@${CODEX_VERSION}
 
-# Pre-fetch PAL MCP server (pinned commit) so first run is faster
-RUN uvx --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git@${PAL_MCP_COMMIT} pal-mcp-server --help 2>&1 \
-    || echo "[WARNING] PAL MCP pre-fetch failed, will download on first run"
+# Bust the cache on new Gemini CLI releases (same rationale as above).
+ADD https://registry.npmjs.org/@google/gemini-cli/latest /tmp/gemini-cli-latest.json
+
+# Install Google's Gemini CLI. Fable drives it via Bash for second-opinion code
+# reviews (`gemini -p "..."`), authenticated by GEMINI_API_KEY from .env.
+RUN npm install -g @google/gemini-cli@${GEMINI_CLI_VERSION}
+
+# Headless `gemini -p` refuses to run in an untrusted directory; the container
+# is itself the trust/isolation boundary (same posture as Codex), so trust the
+# workspace globally rather than per-directory.
+ENV GEMINI_CLI_TRUST_WORKSPACE=true
+
+# Install the Codex worker launcher on PATH (as `codex-worker`) so Claude can
+# spawn disposable sibling-container Codex workers from ANY project directory,
+# not just when the repo's bin/ happens to be reachable via a mount.
+COPY --chown=${USERNAME}:${USERNAME} bin/codex-worker.sh /usr/local/bin/codex-worker
 
 # Copy configuration and entrypoint
 COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/codex-worker
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["bash"]

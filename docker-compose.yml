@@ -20,6 +20,9 @@ services:
       # Mount your project workspace
       - ./workspace:/workspace
       - ./../../Projects:/projects
+      # Extra host directories go in the gitignored docker-compose.override.yml
+      # (Compose auto-merges it — see docker-compose.override.yml.example), so
+      # machine-specific paths never land in this committed file.
       # Optional host SSH config/keys (gitignored ./ssh — see ssh/README.md).
       # Read-only; entrypoint.sh copies the contents into ~/.ssh with correct
       # permissions at boot.

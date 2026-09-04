@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # codex-worker — run an OpenAI Codex worker in a disposable sibling container.
+# Installed on PATH inside the image as `codex-worker` (see Dockerfile).
 #
-# Usage: codex-worker.sh <workdir> "<task prompt>" [extra codex exec flags]
-#   e.g. codex-worker.sh /projects/myapp "Review src/parser" -m gpt-5.6-sol
+# Usage: codex-worker <workdir> "<task prompt>" [extra codex exec flags]
+#   e.g. codex-worker /projects/myapp "Review src/parser" -m gpt-5.6-sol
 #
 # Supervisor model: the claude-code container (Fable) is the sole holder of
 # SSH / GitHub / .env secrets and the docker socket. Workers get exactly two
