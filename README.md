@@ -108,23 +108,15 @@ so it survives restarts, rebuilds, and even `docker compose down -v`. Everything
 else is automatic:
 
 - **Claude Code permissions** — on every boot the entrypoint merges
-  `Bash(codex exec:*)` and `Bash(codex-worker:*)` (plus version/login-status
-  checks) into the allowlist in `~/.claude/settings.json`, so Claude can drive
-  Codex without permission prompts even on a brand-new `claude-config` volume.
-  The merge is a set-union: rules and settings you add yourself are preserved.
+  `Bash(codex exec:*)` (plus version/login-status checks) into the allowlist in
+  `~/.claude/settings.json`, so Claude can drive Codex without permission
+  prompts even on a brand-new `claude-config` volume. The merge is a set-union:
+  rules and settings you add yourself are preserved.
 - **Codex defaults** — `~/.claude/codex/config.toml` is written on first boot
   with `approval_policy = "never"` and `sandbox_mode = "danger-full-access"`
   (the container itself is the sandbox; see the comment in `entrypoint.sh`).
-- **Worker launcher** — `bin/codex-worker.sh` is baked into the image on PATH
-  as `codex-worker`, so Claude can spawn disposable sibling-container Codex
-  workers from any project directory:
-
-  ```bash
-  codex-worker /projects/myapp "Review src/parser for edge cases"
-  ```
-
-  Workers mount only the `codex-auth` volume and the task's project directory —
-  never the `claude-config` volume, SSH keys, or `.env` secrets.
+  Claude drives Codex in-process with `codex exec "<task>"` — no host Docker
+  daemon involved.
 
 If boot logs show `config.toml: Permission denied` or
 `external volume "codex-auth" not found`, see [Troubleshooting](#troubleshooting).
@@ -226,6 +218,32 @@ idempotent and exits after running. Data persists in the `mariadb-data`
 volume. Dev credentials default to `app` / `secret` (root: `root`)
 and can be overridden in `.env`.
 
+### Spinning up test containers (rootless Docker-in-Docker)
+
+The host Docker socket is **not** mounted — mounting `/var/run/docker.sock`
+would give any agent in the container control of the host daemon, a trivial
+escape to host root. Instead, an isolated rootless Docker-in-Docker daemon runs
+as a profile-gated sidecar for testcontainers and image builds:
+
+```bash
+docker compose --profile dind up -d          # start the isolated daemon
+docker compose exec claude docker run --rm hello-world   # runs inside dind
+```
+
+The `claude` container's `DOCKER_HOST` points at `tcp://dind:2375`, so `docker`,
+`docker compose`, and testcontainers "just work" from inside — but every
+container they create lives inside the sidecar's **own** nested daemon. It
+cannot see the host filesystem, the host's other containers, or your secrets. A
+nested `-v /:/host` mounts the sidecar, not the host.
+
+The sidecar is `privileged` (needed for the user-namespace/overlay setup), but
+dockerd and everything it launches run rootless (unprivileged, uid-remapped),
+and the agent only reaches it over the TCP API — never as a shell — so it can't
+leverage that privilege to reach real host root. Port `2375` is non-TLS but
+never published to the host; only sibling containers on the compose network can
+reach it. With the `dind` profile stopped, `docker` commands inside the
+container simply fail to connect — there is no host daemon access by design.
+
 ## Configuration
 
 ### Environment Variables
@@ -237,7 +255,6 @@ See `.env.example` for all available options. Key settings:
 | `GEMINI_API_KEY` | — | Enables the Gemini CLI for second-opinion reviews |
 | `GIT_USER_NAME` | — | Git commit author name |
 | `GIT_USER_EMAIL` | — | Git commit author email |
-| `PROJECTS_HOST_ROOT` | _(derived)_ | Host path of `/projects`, for codex-worker bind mounts |
 
 ### Custom MCP Configuration
 
@@ -269,7 +286,7 @@ Project-scope `.mcp.json` files live with the project and do.
 - **Node.js 20** (slim) — base image
 - **Claude Code** — Anthropic's CLI agent
 - **GitHub CLI (gh)** — GitHub operations from the terminal
-- **OpenAI Codex CLI + `codex-worker`** — subordinate coding agent, pre-authorized for Claude and runnable in disposable sibling containers
+- **OpenAI Codex CLI** — subordinate coding agent, pre-authorized for Claude and driven in-process via `codex exec`
 - **Google Gemini CLI** — second-opinion code reviews via `gemini -p`, keyed by `GEMINI_API_KEY`
 - **uv** — fast Python package manager
 - **ripgrep** — fast code search

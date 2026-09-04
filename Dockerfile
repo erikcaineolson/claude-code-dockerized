@@ -141,14 +141,9 @@ RUN npm install -g @google/gemini-cli@${GEMINI_CLI_VERSION}
 # workspace globally rather than per-directory.
 ENV GEMINI_CLI_TRUST_WORKSPACE=true
 
-# Install the Codex worker launcher on PATH (as `codex-worker`) so Claude can
-# spawn disposable sibling-container Codex workers from ANY project directory,
-# not just when the repo's bin/ happens to be reachable via a mount.
-COPY --chown=${USERNAME}:${USERNAME} bin/codex-worker.sh /usr/local/bin/codex-worker
-
 # Copy configuration and entrypoint
 COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/codex-worker
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["bash"]

@@ -18,9 +18,8 @@ fi
 # Agent CLI access for Claude Code (Codex, Gemini)
 #
 # Neither CLI is registered as an MCP server: under the supervisor model Fable
-# drives them over Bash — Codex workers as disposable sibling containers via
-# codex-worker (see bin/codex-worker.sh), Gemini in-process for second-opinion
-# reviews (`gemini -p`, keyed by GEMINI_API_KEY from .env).
+# drives them over Bash — Codex in-process via `codex exec`, Gemini in-process
+# for second-opinion reviews (`gemini -p`, keyed by GEMINI_API_KEY from .env).
 #
 # Both are pre-authorized in the user-scope permission allowlist so a fresh
 # claude-config volume drives them out of the box instead of stopping at
@@ -45,7 +44,7 @@ CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SETTINGS_JSON="${CLAUDE_DIR}/settings.json"
 mkdir -p "$CLAUDE_DIR"
 
-AGENT_CLI_ALLOW='["Bash(codex:*)","Bash(codex exec:*)","Bash(codex --version)","Bash(codex login status)","Bash(codex-worker:*)","Bash(gemini -p:*)","Bash(gemini --version)"]'
+AGENT_CLI_ALLOW='["Bash(codex:*)","Bash(codex exec:*)","Bash(codex --version)","Bash(codex login status)","Bash(gemini -p:*)","Bash(gemini --version)"]'
 [ -f "$SETTINGS_JSON" ] || echo '{}' > "$SETTINGS_JSON"
 TMP_SETTINGS="$(mktemp)"
 if jq --argjson add "$AGENT_CLI_ALLOW" \

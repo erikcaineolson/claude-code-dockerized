@@ -7,12 +7,13 @@ services:
     tty: true
     security_opt:
       - no-new-privileges:true
-    # Supplementary group so the non-root `node` user can read the bind-mounted
-    # Docker socket below. On Docker Desktop (macOS) the socket is root:root, so
-    # 0 works; on native Linux set DOCKER_GID to the host docker group id
-    # (`getent group docker | cut -d: -f3`).
-    group_add:
-      - "${DOCKER_GID:-0}"
+    environment:
+      # Point the docker CLI at the rootless DinD sidecar below (an isolated
+      # daemon), never the host. Only resolves when the `dind` profile is up:
+      #   docker compose --profile dind up -d
+      # With the profile down, `docker ...` here just fails to connect — there
+      # is no host daemon access by design.
+      DOCKER_HOST: tcp://dind:2375
     env_file:
       - path: .env
         required: false
@@ -27,20 +28,55 @@ services:
       # Read-only; entrypoint.sh copies the contents into ~/.ssh with correct
       # permissions at boot.
       - ./ssh:/home/node/host-ssh:ro
-      # Share the host Docker daemon (sibling containers, not docker-in-docker).
-      # Enables testcontainers integration tests and image builds. NOTE: this
-      # grants the container control of the host Docker daemon.
-      - /var/run/docker.sock:/var/run/docker.sock
+      # NOTE: the host Docker socket is intentionally NOT mounted. Mounting
+      # /var/run/docker.sock would give this container (and any agent running
+      # in it) control of the host Docker daemon — i.e. a trivial escape to
+      # host root, which defeats no-new-privileges and the non-root user. If
+      # you need testcontainers / in-container image builds, expose the daemon
+      # through a locked-down socket proxy instead of a raw bind-mount.
       # Persist Claude Code config between runs
       # WARNING: This volume stores settings.json which may contain API keys.
       # Use `docker volume rm claude-code-dockerized_claude-config` to purge.
       - claude-config:/home/node/.claude
-      # Codex ChatGPT login in its own volume (nested over claude-config at the
-      # CODEX_HOME path) so worker containers can share the login WITHOUT
-      # getting claude-config, which holds real credentials. Workers mount it
-      # at /home/node/.codex via bin/codex-worker.sh.
+      # Codex ChatGPT login in its own volume, nested over claude-config at the
+      # CODEX_HOME path, so the `codex login` persists across rebuilds
+      # independently of claude-config.
       - codex-auth:/home/node/.claude/codex
     working_dir: /projects
+
+  # ---------------------------------------------------------------------------
+  # Rootless Docker-in-Docker — an ISOLATED daemon for spinning up throwaway
+  # test containers (testcontainers, image builds) WITHOUT exposing the host
+  # Docker daemon. The `claude` service talks to it over TCP (DOCKER_HOST above).
+  # Containers created here live inside this sidecar's own nested daemon and
+  # cannot see the host filesystem, the host's other containers, or your
+  # secrets — that isolation is the whole point of not bind-mounting
+  # /var/run/docker.sock.
+  #
+  # `privileged: true` is required for the user-namespace / overlay setup, but
+  # dockerd and every container it launches run ROOTLESS (unprivileged, uid-
+  # remapped). The `claude` container only has TCP API access to this daemon —
+  # no shell in here — so an agent cannot leverage this container's privilege or
+  # reach real host root. A nested `-v /:/host` mounts THIS sidecar's fs, not
+  # the host's.
+  #
+  # Profile-gated so it's off by default (privileged + overhead). Start it with:
+  #   docker compose --profile dind up -d
+  # TCP 2375 is non-TLS but never published to the host — only reachable by
+  # sibling containers on this compose network. dind-data caches pulled images
+  # across restarts. Pin a version (e.g. docker:29-dind-rootless) if you want to
+  # match the engine you build against.
+  # ---------------------------------------------------------------------------
+  dind:
+    profiles: ["dind"]
+    image: docker:dind-rootless
+    container_name: dind-rootless
+    privileged: true
+    environment:
+      # Empty cert dir => daemon listens on tcp://0.0.0.0:2375 without TLS.
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - dind-data:/home/rootless/.local/share/docker
 
   # ---------------------------------------------------------------------------
   # Laravel dev services. Sibling containers on this compose project's default
@@ -99,8 +135,11 @@ services:
 volumes:
   claude-config:
   mariadb-data:
-  # Created once outside compose (`docker volume create codex-auth`) and shared
-  # with worker containers; external so `compose down -v` can't wipe the login.
+  # Image/layer cache for the rootless DinD sidecar, so `--profile dind` runs
+  # don't re-pull test images on every restart.
+  dind-data:
+  # Created once outside compose (`docker volume create codex-auth`); external
+  # so `compose down -v` can't wipe the persisted `codex login`.
   codex-auth:
     external: true
     name: codex-auth
