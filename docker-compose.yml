@@ -7,6 +7,14 @@ services:
     tty: true
     security_opt:
       - no-new-privileges:true
+      # Docker's default seccomp profile + unprivileged user namespaces, so
+      # bubblewrap works in here and the Codex CLI's own `--sandbox` modes can
+      # actually confine the commands it runs. Without it Codex's sandbox fails
+      # CLOSED (nothing executes at all), leaving `danger-full-access` beside the
+      # SSH keys and tokens as the only way to run an agent. This grants NO host
+      # access -- it is a nested sandbox, not the docker socket. See
+      # seccomp/README.md for the delta, the tradeoff, and how to verify.
+      - seccomp:./seccomp/userns.json
     environment:
       # Point the docker CLI at the rootless DinD sidecar below (an isolated
       # daemon), never the host. Only resolves when the `dind` profile is up:
