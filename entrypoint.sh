@@ -9,10 +9,124 @@ if [ -n "$GIT_USER_EMAIL" ]; then
   git config --global user.email "$GIT_USER_EMAIL"
 fi
 
-# Configure GitHub CLI auth if GH_TOKEN is set
-if [ -n "$GH_TOKEN" ]; then
-  echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null || true
+# -----------------------------------------------------------------------------
+# GitHub auth — multiple accounts, kept OUT of the interactive environment
+#
+# Declare one token per GitHub account in .env using the convention
+#   GH_TOKEN_<OWNER>   (OWNER = the github.com owner/org name, uppercased, with
+#                       every non-alphanumeric turned into `_`), e.g.
+#                       GH_TOKEN_EFFINA, GH_TOKEN_ERIKCAINEOLSON.
+# A bare GH_TOKEN (no suffix) still works as the default/fallback account.
+#
+# At boot we:
+#   1. write each token to a private 0600 file under $GH_TOKENS_DIR (NOT a
+#      persisted volume, NOT the process environment),
+#   2. unset every GH_TOKEN* variable from this shell so it is NOT inherited by
+#      Claude Code or any command it runs — nothing leaks the token via an `env`
+#      dump, /proc/<pid>/environ, a crash log, or `docker inspect`, and
+#   3. wire git (via a credential helper) and a `gh-for` helper to select the
+#      right token by repository owner.
+#
+# IMPORTANT: this limits *accidental* leakage and `docker inspect` exposure. It
+# does NOT stop a command the agent deliberately runs from reading the token
+# files — the agent runs unsandboxed in here by design. The real blast-radius
+# control is scoping each token service-side (fine-grained PAT, least
+# privilege, short expiry). See SECURITY.md.
+# -----------------------------------------------------------------------------
+export GH_TOKENS_DIR="${GH_TOKENS_DIR:-$HOME/.config/gh-tokens}"
+LOCAL_BIN="$HOME/.local/bin"
+mkdir -p "$GH_TOKENS_DIR" "$LOCAL_BIN"
+chmod 700 "$GH_TOKENS_DIR"
+# Start clean so a token removed from .env doesn't linger from a previous boot.
+rm -f "$GH_TOKENS_DIR"/* "$GH_TOKENS_DIR"/.owner-map 2>/dev/null || true
+
+gh_wrote_any=0
+for _var in "${!GH_TOKEN_@}"; do
+  [ -n "$_var" ] || continue
+  _acct="${_var#GH_TOKEN_}"
+  _val="${!_var}"
+  [ -n "$_val" ] || continue
+  printf '%s' "$_val" > "$GH_TOKENS_DIR/$_acct"
+  chmod 600 "$GH_TOKENS_DIR/$_acct"
+  gh_wrote_any=1
+done
+if [ -n "${GH_TOKEN:-}" ]; then
+  printf '%s' "$GH_TOKEN" > "$GH_TOKENS_DIR/_DEFAULT"
+  chmod 600 "$GH_TOKENS_DIR/_DEFAULT"
+  gh_wrote_any=1
 fi
+
+if [ "$gh_wrote_any" = 1 ]; then
+  # Optional explicit owner->account overrides for when a repo owner/org name
+  # doesn't match its token's account key. Format: "owner1=ACCT1,owner2=ACCT2".
+  printf '%s' "${GH_OWNER_MAP:-}" > "$GH_TOKENS_DIR/.owner-map"
+  chmod 600 "$GH_TOKENS_DIR/.owner-map"
+
+  # git credential helper: picks the token by repo owner from the request path.
+  cat > "$LOCAL_BIN/git-credential-ghmap" <<'HELPER'
+#!/usr/bin/env bash
+# git credential helper — route github.com auth to the per-owner token written
+# by entrypoint.sh. Stateless; reads token files, never the environment.
+[ "${1:-}" = get ] || exit 0
+host="" ; path=""
+while IFS='=' read -r k v; do
+  case "$k" in host) host=$v ;; path) path=$v ;; esac
+done
+[ "$host" = github.com ] || exit 0
+dir="${GH_TOKENS_DIR:-$HOME/.config/gh-tokens}"
+owner="${path%%/*}"
+norm() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g'; }
+acct="$(norm "$owner")"
+if [ -r "$dir/.owner-map" ]; then
+  mapped="$(tr ',' '\n' < "$dir/.owner-map" | sed -n "s/^${owner}=//Ip" | head -1)"
+  [ -n "$mapped" ] && acct="$mapped"
+fi
+tok=""
+[ -r "$dir/$acct" ] && tok="$(cat "$dir/$acct")"
+[ -z "$tok" ] && [ -r "$dir/_DEFAULT" ] && tok="$(cat "$dir/_DEFAULT")"
+[ -n "$tok" ] || exit 0
+echo "username=x-access-token"
+echo "password=$tok"
+HELPER
+  chmod +x "$LOCAL_BIN/git-credential-ghmap"
+
+  # gh-for <owner> <gh args...> — run gh as the account that owns <owner>.
+  cat > "$LOCAL_BIN/gh-for" <<'GHFOR'
+#!/usr/bin/env bash
+set -euo pipefail
+dir="${GH_TOKENS_DIR:-$HOME/.config/gh-tokens}"
+[ $# -ge 1 ] || { echo "usage: gh-for <owner> <gh args...>" >&2; exit 2; }
+owner="$1"; shift
+norm() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g'; }
+acct="$(norm "$owner")"
+if [ -r "$dir/.owner-map" ]; then
+  mapped="$(tr ',' '\n' < "$dir/.owner-map" | sed -n "s/^${owner}=//Ip" | head -1)"
+  [ -n "$mapped" ] && acct="$mapped"
+fi
+tokfile="$dir/$acct"; [ -r "$tokfile" ] || tokfile="$dir/_DEFAULT"
+[ -r "$tokfile" ] || { echo "gh-for: no token for owner '$owner' (looked for account '$acct')" >&2; exit 1; }
+GH_TOKEN="$(cat "$tokfile")" exec gh "$@"
+GHFOR
+  chmod +x "$LOCAL_BIN/gh-for"
+
+  # Point git at our helper for github.com only, passing the repo path so the
+  # helper can see the owner. --replace-all clears any inherited helper so ours
+  # is the sole one consulted.
+  git config --global --replace-all credential.https://github.com.helper "$LOCAL_BIN/git-credential-ghmap"
+  git config --global credential.https://github.com.useHttpPath true
+
+  # Make bare `gh` usable with the default account (bare GH_TOKEN). gh's config
+  # dir isn't a persisted volume, so this re-logs in cheaply on each boot.
+  if [ -r "$GH_TOKENS_DIR/_DEFAULT" ]; then
+    gh auth login --with-token < "$GH_TOKENS_DIR/_DEFAULT" >/dev/null 2>&1 || true
+  fi
+
+  echo "[entrypoint] GitHub: wrote per-owner token files to ${GH_TOKENS_DIR}; git routes by repo owner, use 'gh-for <owner> ...' for gh. Tokens scrubbed from the environment."
+fi
+
+# Scrub every GH_TOKEN* from this shell so none is inherited by `exec "$@"`.
+for _var in "${!GH_TOKEN_@}"; do [ -n "$_var" ] && unset "$_var"; done
+unset GH_TOKEN GH_OWNER_MAP _var _acct _val gh_wrote_any 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
 # Agent CLI access for Claude Code (Codex, Gemini)

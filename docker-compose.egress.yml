@@ -1,0 +1,78 @@
+# =============================================================================
+# OPT-IN egress lockdown overlay.  (SECURITY.md §5)
+#
+# Restricts the `claude` container to an allowlist of outbound destinations, so
+# a leaked secret or a compromised dependency cannot phone home to an arbitrary
+# host. This is the main defense against the "agent as exfiltration vector"
+# case that in-container secret handling alone cannot address.
+#
+# HOW IT WORKS
+#   - The compose default network is made `internal: true` — no service on it
+#     has a route to the outside world.
+#   - An `egress-proxy` (Squid) sidecar sits on BOTH the internal network and a
+#     separate `egress-allowed` network that does have outbound access. It only
+#     forwards to allowlisted domains (egress/squid.conf), by CONNECT host, so
+#     HTTPS stays end-to-end encrypted (no TLS interception, no custom CA).
+#   - `claude` is pointed at the proxy via HTTP(S)_PROXY. Anything that ignores
+#     the proxy env simply has no route out and fails closed — the safe default.
+#
+# This overlay is NOT auto-merged (that is docker-compose.override.yml). Opt in
+# explicitly by naming it on the command line:
+#
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.override.yml \
+#                  -f docker-compose.egress.yml up -d --force-recreate
+#
+# Test and tune the allowlist on the HOST before relying on it — see
+# egress/README.md. Getting .anthropic.com wrong will cut off Claude Code itself.
+# =============================================================================
+
+networks:
+  # Reconfigure the implicit default network (the one all base services already
+  # share) to have no outbound route. Inter-container traffic still works.
+  default:
+    internal: true
+  # A second network with normal outbound access. Only the proxy (and dind, for
+  # image pulls) attach here, so it is the single controlled path to the world.
+  egress-allowed:
+    driver: bridge
+
+services:
+  claude:
+    # Stays on `default` only (now internal) — no networks override here, so
+    # there is no direct route out; the proxy is the only way through.
+    depends_on:
+      - egress-proxy
+    environment:
+      # Clients that honor these (Claude Code, gh, git, curl, npm, pip, go, …)
+      # send their requests to the proxy. Internal service names bypass it.
+      HTTP_PROXY: http://egress-proxy:3128
+      HTTPS_PROXY: http://egress-proxy:3128
+      http_proxy: http://egress-proxy:3128
+      https_proxy: http://egress-proxy:3128
+      NO_PROXY: localhost,127.0.0.1,::1,egress-proxy,dind,dev-mariadb,dev-mariadb-init,dev-redis
+      no_proxy: localhost,127.0.0.1,::1,egress-proxy,dind,dev-mariadb,dev-mariadb-init,dev-redis
+
+  egress-proxy:
+    image: ubuntu/squid:latest   # pin a tag (e.g. ubuntu/squid:6.10-24.04_beta) for reproducibility
+    container_name: egress-proxy
+    restart: unless-stopped
+    networks:
+      - default          # reachable by claude and the other sibling services
+      - egress-allowed   # the proxy's own route to the internet
+    volumes:
+      - ./egress/squid.conf:/etc/squid/squid.conf:ro
+      - ./egress/allowed-domains.txt:/etc/squid/allowed-domains.txt:ro
+      - ./egress/allowed-ssh-hosts.txt:/etc/squid/allowed-ssh-hosts.txt:ro
+    # Verify manually after first start with:
+    #   docker compose ... exec claude sh -c 'curl -sS https://api.anthropic.com/ -o /dev/null -w "%{http_code}\n"'
+    # (A healthcheck is omitted on purpose: squidclient/curl/nc availability
+    #  varies by squid image tag, and claude only waits for service_started.)
+
+  # The rootless DinD sidecar must pull images, so give it the egress network
+  # too. (It is still profile-gated and off by default.) Remove this block if
+  # you want DinD unable to pull under the lockdown.
+  dind:
+    networks:
+      - default
+      - egress-allowed

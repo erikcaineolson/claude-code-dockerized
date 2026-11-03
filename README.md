@@ -8,9 +8,29 @@ A Docker container with [Claude Code](https://claude.ai/code), the [GitHub CLI](
 |-----|-----------|----------|-----------------|
 | `ANTHROPIC_API_KEY` | **Yes** | Claude Code itself | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 | `GEMINI_API_KEY` | Optional | Gemini CLI (second-opinion reviews) | [aistudio.google.com](https://aistudio.google.com/apikey) |
-| `GH_TOKEN` | Optional | GitHub CLI authentication | [github.com/settings/tokens](https://github.com/settings/tokens) |
+| `GH_TOKEN_<OWNER>` | Optional | GitHub auth, one token per account (see below) | [Fine-grained PATs](https://github.com/settings/personal-access-tokens) |
 
 Codex needs no API key: it signs in once with your ChatGPT account (`codex login`), persisted in the `codex-auth` volume.
+
+### GitHub: multiple accounts
+
+Declare one token per GitHub account using the convention `GH_TOKEN_<OWNER>`
+(the owner/org name, uppercased, non-alphanumerics → `_`) — e.g.
+`GH_TOKEN_EFFINA`, `GH_TOKEN_ERIKCAINEOLSON`. `git` auto-routes by repository
+owner; for the `gh` CLI use `gh-for <owner> <args...>` (e.g. `gh-for effina pr
+create`). A bare `GH_TOKEN` still works as a single default account. Each token
+is kept isolated and scrubbed from the environment at boot — see
+[SECURITY.md](SECURITY.md).
+
+## Security
+
+Agents in this container execute model-generated commands without an in-container
+prompt — **the container is the trust boundary**. The most important consequence:
+the agent can read any secret it can use, so limit what each token/key can do
+**at the service that issued it** (fine-grained GitHub PATs with least privilege
+and short expiry; dedicated API keys with spend caps). Full threat model,
+isolation controls, the user-namespace tradeoff, mount posture, and verification
+steps are in **[SECURITY.md](SECURITY.md)**.
 
 ## Quick Start
 

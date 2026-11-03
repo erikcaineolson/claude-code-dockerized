@@ -1,0 +1,23 @@
+# Extra host directories for this machine only.
+#
+# Copy to `docker-compose.override.yml` (gitignored) and edit. Compose loads
+# `docker-compose.override.yml` automatically alongside `docker-compose.yml` —
+# no `-f` flags needed — and appends these mounts to the ones already declared
+# in the base file rather than replacing them.
+#
+# Notes:
+#   - Relative paths resolve against this directory, not your shell's cwd.
+#   - `~` is NOT expanded; use `${HOME}` instead.
+#   - If a path contains spaces, quote the ENTIRE "src:dst" string, not just
+#     the source — `"a b":/dst` is invalid YAML, `"a b:/dst"` is correct.
+#   - Append `:ro` to mount read-only.
+#   - Each target path must be unique — reusing one already in
+#     docker-compose.yml (e.g. /workspace) is a duplicate-mount error.
+#
+# Apply changes with `docker compose up -d claude`.
+
+services:
+  claude:
+    volumes:
+      - ${HOME}/Documents/Notes:/projects/notes
+      - "${HOME}/Some Folder With Spaces:/projects/spaces:ro"

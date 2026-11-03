@@ -1,4 +1,9 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
   "permissions": {
     "allow": [
       "Bash(docker rm *)",
@@ -26,7 +31,12 @@
       "Bash(mount)",
       "Bash(bash -n entrypoint.sh)",
       "Bash(git check-ignore *)",
-      "Read(//home/node/.ssh/**)"
+      "Read(//home/node/.ssh/**)",
+      "Bash(ssh wp02 *)",
+      "Bash(ssh -o BatchMode=yes wp02 *)",
+      "Bash(timeout * ssh -o BatchMode=yes wp02 *)",
+      "Bash(gh *)",
+      "Bash(git push *)"
     ]
   }
 }

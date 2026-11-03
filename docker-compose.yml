@@ -25,6 +25,32 @@ services:
     env_file:
       - path: .env
         required: false
+    # -------------------------------------------------------------------------
+    # STAGED (not enabled): narrow API-key exposure with Docker secrets.
+    #
+    # `env_file`/`environment` values are readable via `docker inspect` and
+    # `docker compose config`. Docker secrets mount as tmpfs files under
+    # /run/secrets/* instead, so they don't appear there. The model CLIs still
+    # need the keys as env vars, so entrypoint.sh would export them from the
+    # files at boot. Enable deliberately and test on the host — a mistake stops
+    # the agent from starting. See SECURITY.md §4.
+    #
+    # secrets:
+    #   - anthropic_api_key
+    #   - openai_api_key
+    #   - gemini_api_key
+    # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # STAGED (not enabled): restrict egress to an allowlist.
+    #
+    # Unrestricted egress is what lets a leaked secret or compromised dependency
+    # phone home. The robust pattern puts `claude` on an `internal` network and
+    # routes allowed traffic (GitHub + the model-provider APIs + your hosts)
+    # through an egress-proxy sidecar, or enforces it with a host firewall.
+    # NOT enabled: a wrong allowlist silently breaks the agent's own reach to
+    # the Anthropic API, and it needs host-side testing. A complete opt-in
+    # scaffold ships in docker-compose.egress.yml + egress/. See SECURITY.md §5.
+    # -------------------------------------------------------------------------
     volumes:
       # Mount your project workspace
       - ./workspace:/workspace
@@ -151,3 +177,15 @@ volumes:
   codex-auth:
     external: true
     name: codex-auth
+
+# STAGED (not enabled) — companion to the `secrets:` block on the claude service
+# (SECURITY.md §4). Sourcing from an env var keeps the value out of the
+# container's own `environment`/`docker inspect`; entrypoint.sh reads the
+# mounted file and exports it for the CLIs.
+# secrets:
+#   anthropic_api_key:
+#     environment: ANTHROPIC_API_KEY
+#   openai_api_key:
+#     environment: OPENAI_API_KEY
+#   gemini_api_key:
+#     environment: GEMINI_API_KEY
