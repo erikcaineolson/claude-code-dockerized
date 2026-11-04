@@ -2,6 +2,16 @@ services:
   claude:
     build:
       context: .
+      # Opt-in language toolchains (choose-your-own-adventure). Default off so
+      # the image stays lean; set the ones you use to true in .env, then rebuild
+      # (`docker compose up -d --build`). See .env.example and the Dockerfile.
+      args:
+        INSTALL_PYTHON: ${INSTALL_PYTHON:-false}
+        INSTALL_GO: ${INSTALL_GO:-false}
+        INSTALL_PHP: ${INSTALL_PHP:-false}
+        INSTALL_RUBY: ${INSTALL_RUBY:-false}
+        INSTALL_RUST: ${INSTALL_RUST:-false}
+        INSTALL_DOTNET: ${INSTALL_DOTNET:-false}
     container_name: claude-code
     stdin_open: true
     tty: true

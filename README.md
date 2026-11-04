@@ -107,10 +107,21 @@ unique. Apply with `docker compose up -d claude`.
 
 ### Using the GitHub CLI
 
+GitHub tokens are declared per account as `GH_TOKEN_<OWNER>` in `.env` (see
+[GitHub: multiple accounts](#github-multiple-accounts) above). `git` over HTTPS
+auto-routes to the right account by repository owner; for the `gh` CLI, pick the
+account with `gh-for <owner>`:
+
 ```bash
-# If GH_TOKEN is set in .env, gh is already authenticated
+docker compose exec claude gh-for effina repo list
+docker compose exec claude gh-for effina pr create --title "My PR" --body "Description"
+```
+
+A bare `GH_TOKEN` (no suffix), if set, authenticates plain `gh` as a single
+default account:
+
+```bash
 docker compose exec claude gh repo list
-docker compose exec claude gh pr create --title "My PR" --body "Description"
 ```
 
 ### OpenAI Codex (subordinate coding agent)
@@ -217,7 +228,8 @@ the next boot will re-lock them to `0400`.
 
 ### PHP / Laravel toolchain + dev services
 
-The image ships **PHP 8.4 CLI** (Sury repo, pinned via the `PHP_VERSION` build
+When built with `INSTALL_PHP=true` (see [Language toolchains](#language-toolchains)),
+the image ships **PHP 8.5 CLI** (Sury repo, pinned via the `PHP_VERSION` build
 arg) with the extension set Laravel apps need — `pdo_mysql`, `gd`
 (freetype/jpeg/webp), `zip`, `intl`, `bcmath`, `exif`, `redis`, `mbstring`,
 `xml`, `curl`, `sqlite3` — plus **Composer 2**. `php artisan`, `pest`,
@@ -276,6 +288,44 @@ See `.env.example` for all available options. Key settings:
 | `GIT_USER_NAME` | — | Git commit author name |
 | `GIT_USER_EMAIL` | — | Git commit author email |
 
+### Language toolchains
+
+Node and the agent CLIs are always present. Every **language toolchain** —
+Python, Go, PHP, Ruby, Rust — is **opt-in** and **off by default**, so the base
+image stays lean and nobody inherits a stack they don't use. Pick yours by
+setting the matching `INSTALL_*` flag to `true` in `.env`, then rebuild:
+
+```dotenv
+# .env
+INSTALL_PYTHON=true
+INSTALL_GO=true
+INSTALL_PHP=true
+```
+
+```bash
+docker compose up -d --build
+```
+
+| Flag | Installs | Notes |
+|------|----------|-------|
+| `INSTALL_PYTHON` | python3 + pip + venv + uv | Many MCP servers / tools assume python3 — the one most setups want on |
+| `INSTALL_GO` | Go toolchain + sqlc | latest stable, arch-aware |
+| `INSTALL_PHP` | PHP 8.5 CLI + extensions + Composer 2 | Laravel; version via `PHP_VERSION` |
+| `INSTALL_RUBY` | Ruby + Bundler + Rails | includes build-essential for native gems |
+| `INSTALL_RUST` | Rust (rustup, minimal profile) + Cargo | installed for the non-root user |
+| `INSTALL_DOTNET` | .NET SDK (C#/F#) | current LTS channel; telemetry opted out |
+
+Adding another language (e.g. Java, Elixir) is the same pattern: a new
+`ARG INSTALL_*` and a gated `RUN` block in the `Dockerfile`, a passthrough in
+`docker-compose.yml`, and a registry entry in `egress/squid.conf`.
+
+**Safety.** These toolchains' package managers (`pip`, `cargo`, `gem`, `go get`,
+`composer`) download and execute third-party code at install time — the same
+supply-chain exposure for every language. The container boundary (non-root,
+dropped caps, disposable) and the [egress allowlist](egress/README.md) are what
+contain it; the latter already allowlists crates.io, RubyGems, PyPI, and the Go
+proxy. See [SECURITY.md](SECURITY.md).
+
 ### Custom MCP Configuration
 
 To add MCP servers, register them user-scope from inside the container, or add
@@ -299,22 +349,43 @@ Project-scope `.mcp.json` files live with the project and do.
 | `CODEX_VERSION` | `latest` | OpenAI Codex CLI version |
 | `GEMINI_CLI_VERSION` | `latest` | Google Gemini CLI version |
 | `GIT_DELTA_VERSION` | `0.18.2` | Pin git-delta version |
-| `PHP_VERSION` | `8.4` | PHP CLI version installed from the Sury repo |
+| `PHP_VERSION` | `8.5` | PHP CLI version installed from the Sury repo (when `INSTALL_PHP=true`) |
+| `INSTALL_PYTHON` | `false` | Install Python 3 + pip + venv + uv |
+| `INSTALL_GO` | `false` | Install the Go toolchain + sqlc |
+| `INSTALL_PHP` | `false` | Install PHP + extensions + Composer |
+| `INSTALL_RUBY` | `false` | Install Ruby + Bundler + Rails |
+| `INSTALL_RUST` | `false` | Install Rust (rustup, minimal) + Cargo |
+| `INSTALL_DOTNET` | `false` | Install the .NET SDK (C#/F#), current LTS |
+
+The `INSTALL_*` flags are usually set in `.env` (see [Language toolchains](#language-toolchains)), but can also be passed directly: `docker compose build --build-arg INSTALL_RUST=true`.
 
 ## What's Included
 
-- **Node.js 20** (slim) — base image
+**Always present:**
+
+- **Node.js 24** (slim) — base image
 - **Claude Code** — Anthropic's CLI agent
-- **GitHub CLI (gh)** — GitHub operations from the terminal
 - **OpenAI Codex CLI** — subordinate coding agent, pre-authorized for Claude and driven in-process via `codex exec`
 - **Google Gemini CLI** — second-opinion code reviews via `gemini -p`, keyed by `GEMINI_API_KEY`
-- **uv** — fast Python package manager
+- **GitHub CLI (gh)** — GitHub operations from the terminal
+- **Docker CLI** — drives the rootless Docker-in-Docker sidecar (see above)
 - **ripgrep** — fast code search
 - **git-delta** — improved diff output
 - **OpenSSH client** — outbound SSH to your own servers (auto-keyed)
-- **PHP 8.4 CLI + Composer 2** — Laravel development (extensions listed above)
-- **dev-mariadb / dev-redis** — sibling database + cache containers for local app runs and test suites
 - **git, curl, wget, jq, nano, vim-tiny** — standard dev tools
+
+**Optional language toolchains** — off by default, opt in per build (see [Language toolchains](#language-toolchains)):
+
+- **Python 3** + pip + venv + **uv** — `INSTALL_PYTHON`
+- **Go** toolchain + sqlc — `INSTALL_GO`
+- **PHP 8.5 CLI + Composer 2** (Laravel) — `INSTALL_PHP`
+- **Ruby** + Bundler + Rails — `INSTALL_RUBY`
+- **Rust** (rustup, minimal) + Cargo — `INSTALL_RUST`
+- **.NET SDK** (C#/F#, current LTS) — `INSTALL_DOTNET`
+
+**Sibling services** (profile-gated):
+
+- **dev-mariadb / dev-redis** — database + cache containers for local app runs and test suites
 
 ## Troubleshooting
 
@@ -353,4 +424,8 @@ docker compose build && docker compose up -d
 
 ### GitHub CLI not authenticated
 
-Make sure `GH_TOKEN` is set in your `.env` file. The token needs `repo` scope at minimum.
+Check that a token is set in `.env` using the `GH_TOKEN_<OWNER>` convention (or a
+bare `GH_TOKEN` default), and that you're selecting the account with
+`gh-for <owner> ...` — e.g. `gh-for effina pr list`. Prefer a fine-grained PAT
+scoped to the specific repositories with least privilege (usually Contents +
+Pull requests); see [SECURITY.md](SECURITY.md) for the rationale.
