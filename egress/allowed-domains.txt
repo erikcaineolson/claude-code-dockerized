@@ -1,0 +1,15 @@
+# Extra egress destinations the agent is allowed to reach.
+# One domain per line. A leading dot means "this domain and all subdomains".
+# Lines starting with # are ignored. Reload after editing:
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml \
+#                   -f docker-compose.egress.yml up -d egress-proxy
+#
+# Examples:
+#   .sentry.io
+#   downloads.example.com
+#   .mycompany.dev
+#
+# The placeholder below keeps this file non-empty so squid loads it cleanly.
+# It uses the reserved .invalid TLD (RFC 2606) and can never match a real host.
+# Delete it once you add a real domain above.
+placeholder.invalid

@@ -1,0 +1,12 @@
+# Optional: hosts the agent may reach over SSH (port 22) once egress is locked
+# down. One hostname per line. Only takes effect if you also point the SSH
+# client at the proxy with a ProxyCommand — see egress/README.md ("Outbound SSH").
+# Lines starting with # are ignored.
+#
+# Examples:
+#   deploy.example.com
+#   git.mycompany.dev
+#
+# Placeholder (reserved .invalid TLD, never matches a real host) so squid loads
+# this file cleanly. Delete it once you add a real host above.
+placeholder.invalid
